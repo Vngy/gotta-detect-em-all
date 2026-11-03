@@ -99,9 +99,18 @@ def entity(entity_id: str):
             """,
             ent["family"],
         )
+    suggested = rows(
+        f"""
+        SELECT {CARD_COLS}, g.id AS suggestion_id, g.x, g.y, g.w, g.h, g.p
+        FROM suggestions g JOIN cards c ON c.id = g.card_id JOIN sets s ON s.id = c.set_id
+        WHERE g.entity_id = ? AND g.status = 'pending' ORDER BY g.p DESC
+        """,
+        entity_id,
+    )
     return {
         "entity": ent,
         "cards": cards,
+        "suggested": suggested,
         "relations": {
             "co_appears_with": co,
             "illustrators": illustrators,
@@ -126,7 +135,11 @@ def card(card_id: str):
     bx = boxes_for([a["appearance_id"] for a in apps])
     for a in apps:
         a["boxes"] = bx.get(a["appearance_id"], [])
-    return {"card": found[0], "appearances": apps}
+    suggestions = rows(
+        "SELECT g.*, e.name FROM suggestions g JOIN entities e ON e.id = g.entity_id "
+        "WHERE g.card_id = ? AND g.status = 'pending' ORDER BY g.p DESC", card_id,
+    )
+    return {"card": found[0], "appearances": apps, "suggestions": suggestions}
 
 
 class BoxIn(BaseModel):
@@ -183,3 +196,33 @@ def set_owned(card_id: str, body: OwnedIn):
                 "ON CONFLICT(card_id) DO UPDATE SET qty = excluded.qty", (card_id, body.qty),
             )
     return {"card_id": card_id, "qty": body.qty}
+
+
+@app.post("/api/suggestions/{suggestion_id}/accept")
+def accept_suggestion(suggestion_id: int):
+    """Turn a model suggestion into a cameo appearance with a verified box."""
+    conn = connect()
+    g = conn.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
+    if not g:
+        raise HTTPException(404)
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO appearances (card_id, entity_id, role, source) VALUES (?, ?, 'cameo', 'model')",
+            (g["card_id"], g["entity_id"]),
+        )
+        app_id = conn.execute("SELECT id FROM appearances WHERE card_id = ? AND entity_id = ?",
+                              (g["card_id"], g["entity_id"])).fetchone()[0]
+        conn.execute(
+            "INSERT INTO boxes (appearance_id, x, y, w, h, score, source, verified) VALUES (?,?,?,?,?,?,'auto',1)",
+            (app_id, g["x"], g["y"], g["w"], g["h"], g["p"]),
+        )
+        conn.execute("UPDATE suggestions SET status = 'accepted' WHERE id = ?", (suggestion_id,))
+    return {"appearance_id": app_id}
+
+
+@app.post("/api/suggestions/{suggestion_id}/reject")
+def reject_suggestion(suggestion_id: int):
+    conn = connect()
+    with conn:
+        conn.execute("UPDATE suggestions SET status = 'rejected' WHERE id = ?", (suggestion_id,))
+    return {"ok": True}

@@ -62,6 +62,20 @@ CREATE TABLE IF NOT EXISTS boxes (
 );
 CREATE INDEX IF NOT EXISTS boxes_appearance ON boxes(appearance_id);
 
+-- Model-discovered appearances not in any source list, awaiting review.
+CREATE TABLE IF NOT EXISTS suggestions (
+  id INTEGER PRIMARY KEY,
+  card_id TEXT NOT NULL REFERENCES cards(id),
+  entity_id TEXT NOT NULL REFERENCES entities(id),
+  x REAL NOT NULL, y REAL NOT NULL, w REAL NOT NULL, h REAL NOT NULL,
+  p REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  model TEXT NOT NULL,
+  UNIQUE (card_id, entity_id)
+);
+CREATE INDEX IF NOT EXISTS suggestions_entity ON suggestions(entity_id, status);
+CREATE TABLE IF NOT EXISTS discover_scans (card_id TEXT PRIMARY KEY, model TEXT NOT NULL);
+
 -- Your collection: copies you own of a card.
 CREATE TABLE IF NOT EXISTS collection (
   card_id TEXT PRIMARY KEY REFERENCES cards(id),

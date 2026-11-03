@@ -73,6 +73,12 @@ aside h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-
 .bar { height: 3px; background: var(--accent-soft); border-radius: 2px; margin-bottom: 2px; }
 .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 
+h2.section { font-size: 18px; margin: 32px 0 12px; }
+h2.section small, h3.sub { color: var(--muted); font-weight: 400; font-size: 13px; }
+h3.sub { margin: 14px 0 8px; text-transform: uppercase; letter-spacing: .05em; }
+.badge.suggest { background: transparent; color: var(--other); border: 1px dashed var(--other); }
+.tile.suggested { opacity: .9; border-style: dashed; }
+.app.suggestion { border-style: dashed; border-color: var(--other); }
 .tile .own { position: absolute; top: 6px; right: 6px; z-index: 2; width: 28px; height: 28px; border-radius: 50%;
              border: 1px solid rgb(255 255 255 / .6); background: rgb(0 0 0 / .55); color: #fff; font-weight: 700;
              opacity: 0; transition: opacity .12s; }
@@ -208,6 +214,9 @@ function renderEntity() {
           ${[["all", "All"], ["cameo", "Cameos"], ["main", "Main subject"], ["missing", "Missing"]].map(([f, label]) => `<button class="${filter === f ? "on" : ""}" data-f="${f}">${label}</button>`).join("")}
         </div>
         <div class="grid">${shown.map(tile).join("") || `<p class="hint">No cards.</p>`}</div>
+        ${current.suggested.length ? `
+          <h2 class="section">Possible appearances <small>${current.suggested.length} model suggestions — not in any list yet</small></h2>
+          <div class="grid">${current.suggested.map(suggestedTile).join("")}</div>` : ""}
       </div>
       <aside>
         ${e.kind === "species" && r.evolution_family.length > 1 ? `<section><h3>Evolution family</h3>${relList(r.evolution_family, i => `#/e/${i.id}`, 12)}</section>` : ""}
@@ -226,6 +235,22 @@ function renderEntity() {
     const c = current.cards.find(x => x.id === b.dataset.own);
     await setOwned(c.id, c.owned ? 0 : 1);
   });
+}
+
+function suggestedTile(c) {
+  const src = imgUrl(c.image, "low");
+  return `
+    <div class="tile suggested" role="button" tabindex="0" data-card="${esc(c.id)}">
+      <div class="art">
+        ${src ? `<img loading="lazy" src="${src}" alt="${esc(c.name)}">` : ""}
+        ${boxSvg([{ ...c, verified: 0 }], null)}
+      </div>
+      <div class="cap">
+        <span class="badge suggest">suggested ${Math.round(c.p * 100)}%</span>
+        <b>${esc(c.name)}</b>
+        <small>${esc(c.set_name)} · ${esc(c.local_id)}</small>
+      </div>
+    </div>`;
 }
 
 function tile(c) {
@@ -261,7 +286,8 @@ async function openCard(cardId, focusApp) {
 function renderModal() {
   const { data, focusApp, drawingApp } = modalState;
   const c = data.card;
-  const all = data.appearances.flatMap(a => a.boxes.map(b => ({ ...b, label: a.name })));
+  const all = data.appearances.flatMap(a => a.boxes.map(b => ({ ...b, label: a.name })))
+    .concat(data.suggestions.map(g => ({ ...g, verified: 0, label: `${g.name}?` })));
   const src = imgUrl(c.image, "high");
   $("#modalBody").innerHTML = `
     <div class="modal">
@@ -277,6 +303,14 @@ function renderModal() {
           <b>${c.owned || 0}</b>
           <button data-qty="${(c.owned || 0) + 1}" aria-label="One more">+</button></div>
         ${drawingApp ? `<p class="hint" style="color:var(--accent)">Drag on the card to draw a box for <b>${esc(data.appearances.find(a => a.appearance_id === drawingApp).name)}</b>. Esc to cancel.</p>` : ""}
+        ${data.suggestions.length ? `<h3 class="sub">Possible cameos (model)</h3>${data.suggestions.map(g => `
+          <div class="app suggestion">
+            <header><span><b>${esc(g.name)}?</b> <span class="badge suggest">${Math.round(g.p * 100)}%</span></span></header>
+            <div class="actions">
+              <button class="primary" data-accept="${g.id}">Yes, it's there</button>
+              <button data-reject="${g.id}">No</button>
+            </div>
+          </div>`).join("")}<h3 class="sub">Known appearances</h3>` : ""}
         ${data.appearances.map(a => `
           <div class="app ${a.appearance_id === focusApp ? "focus" : ""}">
             <header>
@@ -294,6 +328,8 @@ function renderModal() {
       </div>
     </div>`;
   const body = $("#modalBody");
+  body.querySelectorAll("[data-accept]").forEach(b => b.onclick = () => mutate(`/api/suggestions/${b.dataset.accept}/accept`, "POST"));
+  body.querySelectorAll("[data-reject]").forEach(b => b.onclick = () => mutate(`/api/suggestions/${b.dataset.reject}/reject`, "POST"));
   body.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => setOwned(c.id, +b.dataset.qty));
   body.querySelectorAll("[data-verify]").forEach(b => b.onclick = () => mutate(`/api/boxes/${b.dataset.verify}/verify`, "POST"));
   body.querySelectorAll("[data-del]").forEach(b => b.onclick = () => mutate(`/api/boxes/${b.dataset.del}`, "DELETE"));

@@ -82,6 +82,10 @@ def propose(img: Image.Image, max_boxes=20, threshold=0.04):
             continue
         if y1 < 0.10 * H:  # header strip: name bar, HP, evolution icon
             continue
+        if y0 > 0.85 * H:  # footer strip: weakness/retreat bar, set info, copyright
+            continue
+        if (x1 - x0) > 4 * (y1 - y0) or (y1 - y0) > 4 * (x1 - x0):  # text bars and borders, not creatures
+            continue
         if any(iou((x0, y0, x1, y1), c[0]) > 0.6 for c in cands):
             continue
         cands.append(((x0, y0, x1, y1), score))
