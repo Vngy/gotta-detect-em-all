@@ -123,6 +123,7 @@ const api = (p, opts) => fetch(p, opts).then(r => { if (!r.ok) throw new Error(r
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const imgUrl = (base, q) => base ? `${base}/${q}.webp` : null;
 
+const UNSURE = 0.2;      // auto boxes below this score were mostly wrong in spot checks
 let current = null;      // entity page payload
 let filter = "all";
 
@@ -238,7 +239,8 @@ function tile(c) {
       </div>
       <div class="cap">
         <span class="badge ${c.role}">${c.role}</span>
-        ${c.boxes.length ? "" : `<span class="badge nobox">not located</span>`}
+        ${!c.boxes.length ? `<span class="badge nobox">not located</span>`
+          : c.boxes.every(b => !b.verified && (b.score ?? 1) < UNSURE) ? `<span class="badge nobox" title="Low-confidence auto box — please check">unsure</span>` : ""}
         <b>${esc(c.name)}</b>
         <small>${esc(c.set_name)} · ${esc(c.local_id)}${c.notes ? " · " + esc(c.notes) : ""}</small>
       </div>

@@ -33,6 +33,21 @@ from gde.detect import (DISTRACTORS, IMAGES, clip_image_emb, clip_text_emb, fetc
                         propose, reference_emb)
 
 RESULTS = DATA / "eval"
+PROBE = DATA / "probe.pt"
+USE_PROBE = False
+
+
+@cache
+def probe():
+    """Linear probe from train_probe.py, reordered to species_bank() order. None if not trained."""
+    if not PROBE.exists():
+        return None
+    saved = torch.load(PROBE)
+    dexes = species_bank()[0]
+    assert saved["dexes"] == dexes, "probe trained on a different species list; retrain"
+    layer = torch.nn.Linear(saved["state"]["weight"].shape[1], len(dexes))
+    layer.load_state_dict(saved["state"])
+    return layer.to(clip_image_emb.__globals__["DEVICE"]).eval()
 
 
 @cache
@@ -66,6 +81,8 @@ def identify(img, topk=5):
     log_text = log_text[:, : len(dexes)]
     log_ref = (scale * crop_e @ ref.T).log_softmax(-1)                  # [C, S]
     score = 0.6 * log_text + 0.4 * log_ref
+    if USE_PROBE and (p := probe()) is not None:
+        score = 0.3 * score + 0.7 * p(crop_e * 20).log_softmax(-1)
     out = []
     for c, (box, owl) in enumerate(cands):
         top = score[c].topk(topk)
@@ -164,10 +181,13 @@ def main():
     ap.add_argument("dataset", choices=["en-cameo", "ja-151"])
     ap.add_argument("--n", type=int, default=150)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--probe", action="store_true", help="blend in the trained linear probe")
     args = ap.parse_args()
+    global USE_PROBE
+    USE_PROBE = args.probe
     items = en_cameo(args.n, args.seed) if args.dataset == "en-cameo" else ja_151()
     print(f"{args.dataset}: {len(items)} labeled cards")
-    run(args.dataset, items)
+    run(args.dataset + ("-probe" if args.probe else ""), items)
 
 
 if __name__ == "__main__":
