@@ -16,7 +16,7 @@ from gde.db import connect
 from gde.detect import card_image, iou
 
 MIN_P = 0.3
-MODEL = "owlv2+clip+probe-v1"
+MODEL = "owlv2+clip+probe-v2"
 
 
 def main():
@@ -34,7 +34,10 @@ def main():
         sql += (" AND c.id IN (SELECT a.card_id FROM appearances a JOIN entities e ON e.id = a.entity_id "
                 "WHERE e.name = ? COLLATE NOCASE)")
         params.append(args.entity)
-    cards = conn.execute(sql + " ORDER BY c.id", params).fetchall()[: args.limit]
+    # Cameos cluster on Trainer cards and illustration-style rares, so scan those first.
+    order = (" ORDER BY c.category = 'Trainer' DESC, (c.rarity LIKE '%Illustration%' OR c.rarity LIKE '%Art%') DESC,"
+             " c.id")
+    cards = conn.execute(sql + order, params).fetchall()[: args.limit]
     print(f"{len(cards)} cards to scan", flush=True)
     pool = ThreadPoolExecutor(8)
     images = pool.map(lambda c: card_image(c["id"], c["image"]), cards)
