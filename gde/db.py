@@ -62,6 +62,14 @@ CREATE TABLE IF NOT EXISTS boxes (
 );
 CREATE INDEX IF NOT EXISTS boxes_appearance ON boxes(appearance_id);
 
+-- Your collection: copies you own of a card.
+CREATE TABLE IF NOT EXISTS collection (
+  card_id TEXT PRIMARY KEY REFERENCES cards(id),
+  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+  notes TEXT,
+  added_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Cameo sheet rows we could not resolve to a TCGdex card (for later alias fixes).
 CREATE TABLE IF NOT EXISTS unmatched_cameos (
   entity_id TEXT, card_name TEXT, set_name TEXT, number TEXT, notes TEXT, reason TEXT

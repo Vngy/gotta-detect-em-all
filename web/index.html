@@ -73,6 +73,19 @@ aside h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-
 .bar { height: 3px; background: var(--accent-soft); border-radius: 2px; margin-bottom: 2px; }
 .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
 
+.tile .own { position: absolute; top: 6px; right: 6px; z-index: 2; width: 28px; height: 28px; border-radius: 50%;
+             border: 1px solid rgb(255 255 255 / .6); background: rgb(0 0 0 / .55); color: #fff; font-weight: 700;
+             opacity: 0; transition: opacity .12s; }
+.tile:hover .own, .tile:focus-within .own, .tile.owned .own { opacity: 1; }
+.tile.owned .own { background: var(--ok); border-color: var(--ok); }
+.tile:not(.owned) .art img { filter: saturate(.85); }
+.progress { display: flex; align-items: center; gap: 10px; margin: -6px 0 16px; max-width: 420px; color: var(--muted); font-size: 13px; }
+.progress div { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--ok); }
+.progress b { color: var(--ink); }
+.ownrow { display: flex; align-items: center; gap: 8px; margin: -6px 0 14px; color: var(--muted); }
+.ownrow button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); }
+.ownrow b { color: var(--ink); min-width: 1.5em; text-align: center; }
 dialog { border: none; border-radius: 14px; padding: 0; background: var(--surface); color: var(--ink);
          width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 32px); box-shadow: var(--shadow); }
 dialog::backdrop { background: rgb(0 0 0 / .55); }
@@ -171,7 +184,8 @@ function renderEntity() {
   const { entity: e, cards, relations: r } = current;
   const nMain = cards.filter(c => c.role === "main").length, nCameo = cards.length - nMain;
   const nBoxed = cards.filter(c => c.boxes.length).length;
-  const shown = cards.filter(c => filter === "all" || c.role === filter);
+  const nOwned = cards.filter(c => c.owned).length;
+  const shown = cards.filter(c => filter === "all" || (filter === "missing" ? !c.owned : c.role === filter));
   const sub = e.kind === "species" ? `#${e.dex} · Generation ${e.generation}` : (e.region || "Character");
   const relList = (items, href, max) => {
     const top = Math.max(1, ...items.map(i => i.n));
@@ -187,8 +201,10 @@ function renderEntity() {
       <div>
         <h1>${esc(e.name)}</h1>
         <div class="meta">${esc(sub)} · ${cards.length} cards · ${nMain} main · ${nCameo} cameo · ${nBoxed} located</div>
+        <div class="progress" title="Cards you own, including cameos"><div><i style="width:${cards.length ? nOwned / cards.length * 100 : 0}%"></i></div>
+          <span>Owned <b>${nOwned}</b> / ${cards.length}</span></div>
         <div class="tabs">
-          ${["all", "main", "cameo"].map(f => `<button class="${filter === f ? "on" : ""}" data-f="${f}">${f === "all" ? "All" : f === "main" ? "Main subject" : "Cameos"}</button>`).join("")}
+          ${[["all", "All"], ["cameo", "Cameos"], ["main", "Main subject"], ["missing", "Missing"]].map(([f, label]) => `<button class="${filter === f ? "on" : ""}" data-f="${f}">${label}</button>`).join("")}
         </div>
         <div class="grid">${shown.map(tile).join("") || `<p class="hint">No cards.</p>`}</div>
       </div>
@@ -200,14 +216,23 @@ function renderEntity() {
       </aside>
     </div>`;
   $("#view").querySelectorAll("[data-f]").forEach(b => b.onclick = () => { filter = b.dataset.f; renderEntity(); });
-  $("#view").querySelectorAll("[data-card]").forEach(t => t.onclick = () => openCard(t.dataset.card, +t.dataset.app));
+  $("#view").querySelectorAll("[data-card]").forEach(t => t.onclick = e => {
+    if (e.target.closest("[data-own]")) return;
+    openCard(t.dataset.card, +t.dataset.app);
+  });
+  $("#view").querySelectorAll("[data-own]").forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const c = current.cards.find(x => x.id === b.dataset.own);
+    await setOwned(c.id, c.owned ? 0 : 1);
+  });
 }
 
 function tile(c) {
   const src = imgUrl(c.image, "low");
   return `
-    <button class="tile" data-card="${esc(c.id)}" data-app="${c.appearance_id}">
+    <div class="tile ${c.owned ? "owned" : ""}" role="button" tabindex="0" data-card="${esc(c.id)}" data-app="${c.appearance_id}">
       <div class="art">
+        <button class="own" data-own="${esc(c.id)}" title="${c.owned ? "In your collection — click to remove" : "Add to collection"}">${c.owned ? "✓" : "+"}</button>
         ${src ? `<img loading="lazy" src="${src}" alt="${esc(c.name)}">` : `<div class="noimg">No image in TCGdex</div>`}
         ${src ? boxSvg(c.boxes) : ""}
       </div>
@@ -217,7 +242,7 @@ function tile(c) {
         <b>${esc(c.name)}</b>
         <small>${esc(c.set_name)} · ${esc(c.local_id)}${c.notes ? " · " + esc(c.notes) : ""}</small>
       </div>
-    </button>`;
+    </div>`;
 }
 
 // ---------- card modal ----------
@@ -245,6 +270,10 @@ function renderModal() {
       <div>
         <h1 style="font-size:22px">${esc(c.name)}</h1>
         <div class="meta">${esc(c.set_name)} · ${esc(c.local_id)} · ${esc(c.rarity || "")}<br>Illus. ${esc(c.illustrator || "unknown")} · ${esc(c.release_date || "")}</div>
+        <div class="ownrow">Owned
+          <button data-qty="${Math.max(0, (c.owned || 0) - 1)}" aria-label="One fewer">−</button>
+          <b>${c.owned || 0}</b>
+          <button data-qty="${(c.owned || 0) + 1}" aria-label="One more">+</button></div>
         ${drawingApp ? `<p class="hint" style="color:var(--accent)">Drag on the card to draw a box for <b>${esc(data.appearances.find(a => a.appearance_id === drawingApp).name)}</b>. Esc to cancel.</p>` : ""}
         ${data.appearances.map(a => `
           <div class="app ${a.appearance_id === focusApp ? "focus" : ""}">
@@ -263,6 +292,7 @@ function renderModal() {
       </div>
     </div>`;
   const body = $("#modalBody");
+  body.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => setOwned(c.id, +b.dataset.qty));
   body.querySelectorAll("[data-verify]").forEach(b => b.onclick = () => mutate(`/api/boxes/${b.dataset.verify}/verify`, "POST"));
   body.querySelectorAll("[data-del]").forEach(b => b.onclick = () => mutate(`/api/boxes/${b.dataset.del}`, "DELETE"));
   body.querySelectorAll("[data-draw]").forEach(b => b.onclick = () => { modalState.drawingApp = +b.dataset.draw; renderModal(); });
@@ -273,6 +303,12 @@ async function mutate(url, method, body) {
   await api(url, { method, headers: { "content-type": "application/json" }, body: body && JSON.stringify(body) });
   await openCard(modalState.data.card.id, modalState.focusApp);
   if (current) current = await api(`/api/entity/${encodeURIComponent(current.entity.id)}`), renderEntity();
+}
+
+async function setOwned(cardId, qty) {
+  await api(`/api/collection/${encodeURIComponent(cardId)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ qty }) });
+  if (modal.open && modalState) await openCard(cardId, modalState.focusApp);
+  if (current) { current = await api(`/api/entity/${encodeURIComponent(current.entity.id)}`); renderEntity(); }
 }
 
 function enableDrawing() {

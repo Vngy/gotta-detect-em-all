@@ -13,6 +13,8 @@ Usage:
 """
 import argparse
 import io
+import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import cache
 
 import httpx
@@ -174,8 +176,10 @@ def locate(card, appearances):
     return results
 
 
-def targets(conn, entity=None, card=None, redo=False):
-    where, args = [], []
+def targets(conn, entity=None, card=None, redo=False, cameos_only=False):
+    where, args = ["c.image IS NOT NULL"], []
+    if cameos_only:
+        where.append("c.id IN (SELECT card_id FROM appearances WHERE role='cameo')")
     if entity:
         where.append("c.id IN (SELECT a2.card_id FROM appearances a2 JOIN entities e2 ON e2.id=a2.entity_id "
                      "WHERE e2.name = ? COLLATE NOCASE)")
@@ -183,9 +187,9 @@ def targets(conn, entity=None, card=None, redo=False):
     if card:
         where.append("c.id = ?")
         args.append(card)
-    sql = "SELECT DISTINCT c.id, c.image FROM cards c JOIN appearances a ON a.card_id=c.id"
-    if where:
-        sql += " WHERE " + " AND ".join(where)
+    # Cards with cameos first: they're the reason this database exists.
+    sql = ("SELECT c.id, c.image FROM cards c JOIN appearances a ON a.card_id=c.id WHERE " + " AND ".join(where)
+           + " GROUP BY c.id ORDER BY MAX(a.role='cameo') DESC, c.id")
     for c in conn.execute(sql, args).fetchall():
         apps = conn.execute(
             "SELECT a.id AS appearance_id, e.kind, e.name, e.dex, "
@@ -202,22 +206,35 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--entity", help="entity name, e.g. Cyndaquil or Ethan")
     ap.add_argument("--card", help="TCGdex card id")
+    ap.add_argument("--all", action="store_true", help="every card with a known appearance (cameo cards first)")
+    ap.add_argument("--cameos", action="store_true", help="only cards with at least one cameo")
+    ap.add_argument("--limit", type=int)
     ap.add_argument("--redo", action="store_true", help="replace existing auto boxes")
     args = ap.parse_args()
-    if not (args.entity or args.card):
-        ap.error("pass --entity or --card")
+    if not (args.entity or args.card or args.all or args.cameos):
+        ap.error("pass --entity, --card, --cameos or --all")
     conn = connect()
-    jobs = list(targets(conn, args.entity, args.card, args.redo))
-    print(f"{len(jobs)} cards to process on {DEVICE}")
-    for i, (card, apps) in enumerate(jobs, 1):
-        boxes = locate(card, apps)
+    jobs = list(targets(conn, args.entity, args.card, args.redo, args.cameos))[: args.limit]
+    print(f"{len(jobs)} cards to process on {DEVICE}", flush=True)
+    # Download images ahead of the GPU so the network never stalls inference.
+    pool = ThreadPoolExecutor(8)
+    prefetch = [pool.submit(card_image, c["id"], c["image"]) for c, _ in jobs]
+    t0 = time.time()
+    for i, ((card, apps), _) in enumerate(zip(jobs, prefetch), 1):
+        try:
+            boxes = locate(card, apps)
+        except Exception as e:  # one bad image shouldn't kill an hours-long batch
+            print(f"[{i}/{len(jobs)}] {card['id']}: ERROR {e!r}", flush=True)
+            continue
         with conn:
             conn.executemany("DELETE FROM boxes WHERE appearance_id=? AND source='auto'",
                              [(a["appearance_id"],) for a in apps])
             conn.executemany(
                 "INSERT INTO boxes (appearance_id, x, y, w, h, score, source) VALUES (?,?,?,?,?,?,'auto')", boxes
             )
-        print(f"[{i}/{len(jobs)}] {card['id']}: {len(boxes)}/{len(apps)} located")
+        if i % 50 == 0 or i == len(jobs):
+            rate = i / (time.time() - t0)
+            print(f"[{i}/{len(jobs)}] {rate:.2f} cards/s, eta {(len(jobs) - i) / rate / 60:.0f} min", flush=True)
 
 
 if __name__ == "__main__":

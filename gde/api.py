@@ -8,7 +8,7 @@ from gde.db import ROOT, connect
 app = FastAPI(title="Gotta Detect 'Em All")
 WEB = ROOT / "web"
 
-CARD_COLS = "c.id, c.name, c.local_id, c.rarity, c.illustrator, c.image, c.category, s.id AS set_id, s.name AS set_name, s.serie, s.release_date"
+CARD_COLS = "(SELECT qty FROM collection WHERE card_id = c.id) AS owned, c.id, c.name, c.local_id, c.rarity, c.illustrator, c.image, c.category, s.id AS set_id, s.name AS set_name, s.serie, s.release_date"
 
 
 def rows(sql, *args):
@@ -164,3 +164,22 @@ def delete_box(box_id: int):
     with conn:
         conn.execute("DELETE FROM boxes WHERE id = ?", (box_id,))
     return {"ok": True}
+
+
+class OwnedIn(BaseModel):
+    qty: int = Field(ge=0, le=999)
+
+
+@app.put("/api/collection/{card_id}")
+def set_owned(card_id: str, body: OwnedIn):
+    """qty 0 removes the card from your collection."""
+    conn = connect()
+    with conn:
+        if body.qty == 0:
+            conn.execute("DELETE FROM collection WHERE card_id = ?", (card_id,))
+        else:
+            conn.execute(
+                "INSERT INTO collection (card_id, qty) VALUES (?, ?) "
+                "ON CONFLICT(card_id) DO UPDATE SET qty = excluded.qty", (card_id, body.qty),
+            )
+    return {"card_id": card_id, "qty": body.qty}
