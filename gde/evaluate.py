@@ -29,7 +29,7 @@ import httpx
 import torch
 
 from gde.db import DATA, connect
-from gde.detect import (DISTRACTORS, IMAGES, clip_image_emb, clip_text_emb, fetch_image, models, padded_crop,
+from gde.detect import (DEVICE, DISTRACTORS, IMAGES, clip_image_emb, clip_text_emb, fetch_image, models, padded_crop,
                         propose, reference_emb)
 
 RESULTS = DATA / "eval"
@@ -47,7 +47,7 @@ def probe():
     assert saved["dexes"] == dexes, "probe trained on a different species list; retrain"
     layer = torch.nn.Linear(saved["state"]["weight"].shape[1], len(dexes))
     layer.load_state_dict(saved["state"])
-    return layer.to(clip_image_emb.__globals__["DEVICE"]).eval()
+    return layer.to(DEVICE).eval()
 
 
 @cache
