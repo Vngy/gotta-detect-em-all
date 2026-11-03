@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gotta Detect 'Em All</title>
+<style>
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --ink: #1d1c1a; --muted: #6d6a63; --line: #e3e0d8;
+  --accent: #d9480f; --accent-soft: #fde8dc; --other: #3b6fd1; --ok: #2f8a4c;
+  --radius: 10px; --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 4px 14px rgb(0 0 0 / .05);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151513; --surface: #1f1e1b; --ink: #ecebe6; --muted: #9c998f; --line: #33312c;
+          --accent: #ff7a3d; --accent-soft: #3a2418; --other: #7aa2ff; --ok: #5cc47f; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: inherit; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+header { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--line);
+         padding: 14px 20px; display: flex; gap: 18px; align-items: center; }
+.brand { font-weight: 700; letter-spacing: -.01em; white-space: nowrap; text-decoration: none; }
+.brand span { color: var(--accent); }
+.search { position: relative; flex: 1; max-width: 520px; }
+.search input { width: 100%; padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line);
+                background: var(--surface); color: var(--ink); font: inherit; outline: none; }
+.search input:focus { border-color: var(--accent); }
+.suggest { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--surface);
+           border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+           list-style: none; margin: 0; padding: 4px; display: none; }
+.suggest.open { display: block; }
+.suggest li { padding: 8px 10px; border-radius: 6px; display: flex; justify-content: space-between; gap: 10px; cursor: pointer; }
+.suggest li.active, .suggest li:hover { background: var(--accent-soft); }
+.suggest small { color: var(--muted); }
+
+main { padding: 24px 20px 60px; max-width: 1400px; margin: 0 auto; }
+.empty { color: var(--muted); padding: 60px 0; text-align: center; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: -.02em; }
+.meta { color: var(--muted); margin-bottom: 16px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tabs button { border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 999px; }
+.tabs button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+        cursor: pointer; text-align: left; padding: 0; transition: transform .12s; }
+.tile:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.art { position: relative; aspect-ratio: 600 / 825; background: var(--line); }
+.art img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.art svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.noimg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; padding: 10px; text-align: center; }
+.cap { padding: 8px 10px 10px; }
+.cap b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap small { color: var(--muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+         padding: 1px 6px; border-radius: 4px; margin-bottom: 3px; }
+.badge.cameo { background: var(--accent-soft); color: var(--accent); }
+.badge.main { background: var(--line); color: var(--muted); }
+.badge.nobox { background: transparent; color: var(--muted); border: 1px dashed var(--line); }
+
+aside section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
+aside h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.rel { display: flex; justify-content: space-between; padding: 4px 0; gap: 8px; }
+.rel a { text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel a:hover { color: var(--accent); }
+.rel span { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar { height: 3px; background: var(--accent-soft); border-radius: 2px; margin-bottom: 2px; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+
+dialog { border: none; border-radius: 14px; padding: 0; background: var(--surface); color: var(--ink);
+         width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 32px); box-shadow: var(--shadow); }
+dialog::backdrop { background: rgb(0 0 0 / .55); }
+.modal { display: grid; grid-template-columns: minmax(0, 440px) 1fr; gap: 22px; padding: 20px; }
+@media (max-width: 760px) { .modal { grid-template-columns: 1fr; } }
+.modal .art { border-radius: 12px; overflow: hidden; }
+.modal .art svg { pointer-events: auto; }
+.modal .art.drawing { cursor: crosshair; }
+.close { position: absolute; top: 10px; right: 12px; border: none; background: none; font-size: 22px; color: var(--muted); }
+.app { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.app.focus { border-color: var(--accent); }
+.app header { all: unset; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.app .actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.app .actions button { border: 1px solid var(--line); background: var(--bg); padding: 3px 9px; border-radius: 6px; font-size: 13px; }
+.app .actions button.primary { border-color: var(--accent); color: var(--accent); }
+.hint { color: var(--muted); font-size: 13px; }
+.ok { color: var(--ok); font-size: 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="#/">Gotta Detect <span>'Em All</span></a>
+  <div class="search">
+    <input id="q" placeholder="Search a Pokémon or character — e.g. Cyndaquil, Ethan, 155" autocomplete="off">
+    <ul class="suggest" id="suggest"></ul>
+  </div>
+</header>
+<main id="view"><p class="empty">Search for a Pokémon or character to see every card it appears on — and where.</p></main>
+
+<dialog id="modal"><button class="close" onclick="modal.close()" aria-label="Close">×</button><div id="modalBody"></div></dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = (p, opts) => fetch(p, opts).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const imgUrl = (base, q) => base ? `${base}/${q}.webp` : null;
+
+let current = null;      // entity page payload
+let filter = "all";
+
+// ---------- search ----------
+const q = $("#q"), suggest = $("#suggest");
+let suggestions = [], active = -1, timer;
+q.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(runSuggest, 120); });
+q.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { active = Math.min(active + 1, suggestions.length - 1); paintSuggest(); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { active = Math.max(active - 1, 0); paintSuggest(); e.preventDefault(); }
+  else if (e.key === "Enter" && suggestions.length) { pick(suggestions[Math.max(active, 0)]); }
+  else if (e.key === "Escape") { suggest.classList.remove("open"); }
+});
+document.addEventListener("click", e => { if (!e.target.closest(".search")) suggest.classList.remove("open"); });
+
+async function runSuggest() {
+  const v = q.value.trim();
+  if (!v) { suggest.classList.remove("open"); return; }
+  suggestions = await api(`/api/search?q=${encodeURIComponent(v)}`);
+  active = suggestions.length ? 0 : -1;
+  paintSuggest();
+}
+function paintSuggest() {
+  suggest.innerHTML = suggestions.map((s, i) => `
+    <li class="${i === active ? "active" : ""}" data-i="${i}">
+      <span>${esc(s.name)} <small>${s.kind === "species" ? "#" + s.dex : esc(s.region || "character")}</small></span>
+      <small>${s.n_main || 0} main · ${s.n_cameo || 0} cameo</small>
+    </li>`).join("") || `<li><small>No matches</small></li>`;
+  suggest.classList.add("open");
+  suggest.querySelectorAll("li[data-i]").forEach(li => li.onclick = () => pick(suggestions[+li.dataset.i]));
+}
+function pick(s) { suggest.classList.remove("open"); q.value = s.name; location.hash = `#/e/${encodeURIComponent(s.id)}`; }
+
+// ---------- boxes ----------
+function boxSvg(boxes, highlightIds = null, labels = false) {
+  const rects = boxes.map(b => {
+    const hi = !highlightIds || highlightIds.has(b.appearance_id);
+    const color = hi ? "var(--accent)" : "var(--other)";
+    const dash = b.verified ? "" : `stroke-dasharray="1.2 .8"`; // auto boxes dashed, verified solid
+    const label = labels && b.label
+      ? `<text x="${b.x * 100 + .8}" y="${b.y * 100 - 1}" font-size="3.2" font-weight="700" fill="${color}" paint-order="stroke" stroke="white" stroke-width=".8">${esc(b.label)}</text>` : "";
+    const geom = `x="${b.x * 100}" y="${b.y * 100}" width="${b.w * 100}" height="${b.h * 100}" rx=".6" fill="none" vector-effect="non-scaling-stroke"`;
+    return `<rect ${geom} stroke="rgb(0 0 0 / .55)" style="stroke-width:${hi ? 5 : 3.5}px"/>
+            <rect ${geom} stroke="${color}" ${dash.replace("1.2 .8", "6 4")} style="stroke-width:${hi ? 3 : 2}px"/>${label}`;
+  }).join("");
+  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">${rects}</svg>`;
+}
+
+// ---------- entity page ----------
+async function showEntity(id) {
+  $("#view").innerHTML = `<p class="empty">Loading…</p>`;
+  current = await api(`/api/entity/${encodeURIComponent(id)}`);
+  filter = "all";
+  q.value = current.entity.name;
+  renderEntity();
+}
+
+function renderEntity() {
+  const { entity: e, cards, relations: r } = current;
+  const nMain = cards.filter(c => c.role === "main").length, nCameo = cards.length - nMain;
+  const nBoxed = cards.filter(c => c.boxes.length).length;
+  const shown = cards.filter(c => filter === "all" || c.role === filter);
+  const sub = e.kind === "species" ? `#${e.dex} · Generation ${e.generation}` : (e.region || "Character");
+  const relList = (items, href, max) => {
+    const top = Math.max(1, ...items.map(i => i.n));
+    return items.slice(0, max).map(i => `
+      <div class="rel"><a href="${href(i)}">${esc(i.name)}</a><span>${i.n}</span></div>
+      <div class="bar"><i style="width:${(i.n / top) * 100}%"></i></div>`).join("") || `<p class="hint">None yet.</p>`;
+  };
+  const species = r.co_appears_with.filter(x => x.kind === "species");
+  const people = r.co_appears_with.filter(x => x.kind === "character");
+
+  $("#view").innerHTML = `
+    <div class="layout">
+      <div>
+        <h1>${esc(e.name)}</h1>
+        <div class="meta">${esc(sub)} · ${cards.length} cards · ${nMain} main · ${nCameo} cameo · ${nBoxed} located</div>
+        <div class="tabs">
+          ${["all", "main", "cameo"].map(f => `<button class="${filter === f ? "on" : ""}" data-f="${f}">${f === "all" ? "All" : f === "main" ? "Main subject" : "Cameos"}</button>`).join("")}
+        </div>
+        <div class="grid">${shown.map(tile).join("") || `<p class="hint">No cards.</p>`}</div>
+      </div>
+      <aside>
+        ${e.kind === "species" && r.evolution_family.length > 1 ? `<section><h3>Evolution family</h3>${relList(r.evolution_family, i => `#/e/${i.id}`, 12)}</section>` : ""}
+        <section><h3>Appears with (Pokémon)</h3>${relList(species, i => `#/e/${encodeURIComponent(i.id)}`, 12)}</section>
+        <section><h3>Appears with (people)</h3>${relList(people, i => `#/e/${encodeURIComponent(i.id)}`, 10)}</section>
+        <section><h3>Illustrators</h3>${relList(r.illustrators, () => "javascript:void 0", 10)}</section>
+      </aside>
+    </div>`;
+  $("#view").querySelectorAll("[data-f]").forEach(b => b.onclick = () => { filter = b.dataset.f; renderEntity(); });
+  $("#view").querySelectorAll("[data-card]").forEach(t => t.onclick = () => openCard(t.dataset.card, +t.dataset.app));
+}
+
+function tile(c) {
+  const src = imgUrl(c.image, "low");
+  return `
+    <button class="tile" data-card="${esc(c.id)}" data-app="${c.appearance_id}">
+      <div class="art">
+        ${src ? `<img loading="lazy" src="${src}" alt="${esc(c.name)}">` : `<div class="noimg">No image in TCGdex</div>`}
+        ${src ? boxSvg(c.boxes) : ""}
+      </div>
+      <div class="cap">
+        <span class="badge ${c.role}">${c.role}</span>
+        ${c.boxes.length ? "" : `<span class="badge nobox">not located</span>`}
+        <b>${esc(c.name)}</b>
+        <small>${esc(c.set_name)} · ${esc(c.local_id)}${c.notes ? " · " + esc(c.notes) : ""}</small>
+      </div>
+    </button>`;
+}
+
+// ---------- card modal ----------
+const modal = $("#modal");
+let modalState = null;  // { data, focusApp, drawingApp }
+
+async function openCard(cardId, focusApp) {
+  const data = await api(`/api/card/${encodeURIComponent(cardId)}`);
+  modalState = { data, focusApp, drawingApp: null };
+  renderModal();
+  if (!modal.open) modal.showModal();
+}
+
+function renderModal() {
+  const { data, focusApp, drawingApp } = modalState;
+  const c = data.card;
+  const all = data.appearances.flatMap(a => a.boxes.map(b => ({ ...b, label: a.name })));
+  const src = imgUrl(c.image, "high");
+  $("#modalBody").innerHTML = `
+    <div class="modal">
+      <div class="art ${drawingApp ? "drawing" : ""}" id="canvas">
+        ${src ? `<img src="${src}" alt="${esc(c.name)}" draggable="false">` : `<div class="noimg">No image</div>`}
+        ${boxSvg(all, focusApp ? new Set([focusApp]) : null, true)}
+      </div>
+      <div>
+        <h1 style="font-size:22px">${esc(c.name)}</h1>
+        <div class="meta">${esc(c.set_name)} · ${esc(c.local_id)} · ${esc(c.rarity || "")}<br>Illus. ${esc(c.illustrator || "unknown")} · ${esc(c.release_date || "")}</div>
+        ${drawingApp ? `<p class="hint" style="color:var(--accent)">Drag on the card to draw a box for <b>${esc(data.appearances.find(a => a.appearance_id === drawingApp).name)}</b>. Esc to cancel.</p>` : ""}
+        ${data.appearances.map(a => `
+          <div class="app ${a.appearance_id === focusApp ? "focus" : ""}">
+            <header>
+              <span><a href="#/e/${encodeURIComponent(a.entity_id)}" onclick="modal.close()"><b>${esc(a.name)}</b></a>
+                <span class="badge ${a.role}">${a.role}</span></span>
+              ${a.boxes.some(b => b.verified) ? `<span class="ok">✓ verified</span>` : a.boxes.length ? `<span class="hint">auto ${a.boxes[0].score?.toFixed(2) ?? ""}</span>` : `<span class="hint">not located</span>`}
+            </header>
+            ${a.notes ? `<div class="hint">${esc(a.notes)}</div>` : ""}
+            <div class="actions">
+              ${a.boxes.filter(b => !b.verified).map(b => `<button class="primary" data-verify="${b.id}">Looks right</button>`).join("")}
+              <button data-draw="${a.appearance_id}">${a.boxes.length ? "Redraw box" : "Draw box"}</button>
+              ${a.boxes.map(b => `<button data-del="${b.id}">Remove box</button>`).join("")}
+            </div>
+          </div>`).join("")}
+      </div>
+    </div>`;
+  const body = $("#modalBody");
+  body.querySelectorAll("[data-verify]").forEach(b => b.onclick = () => mutate(`/api/boxes/${b.dataset.verify}/verify`, "POST"));
+  body.querySelectorAll("[data-del]").forEach(b => b.onclick = () => mutate(`/api/boxes/${b.dataset.del}`, "DELETE"));
+  body.querySelectorAll("[data-draw]").forEach(b => b.onclick = () => { modalState.drawingApp = +b.dataset.draw; renderModal(); });
+  if (drawingApp) enableDrawing();
+}
+
+async function mutate(url, method, body) {
+  await api(url, { method, headers: { "content-type": "application/json" }, body: body && JSON.stringify(body) });
+  await openCard(modalState.data.card.id, modalState.focusApp);
+  if (current) current = await api(`/api/entity/${encodeURIComponent(current.entity.id)}`), renderEntity();
+}
+
+function enableDrawing() {
+  const canvas = $("#canvas"), svg = canvas.querySelector("svg");
+  let start = null, rect = null;
+  const pt = e => { const r = canvas.getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
+  canvas.onpointerdown = e => {
+    start = pt(e); canvas.setPointerCapture(e.pointerId);
+    rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("fill", "none"); rect.setAttribute("stroke", "var(--accent)"); rect.setAttribute("style", "stroke-width:3px");
+    rect.setAttribute("vector-effect", "non-scaling-stroke"); svg.appendChild(rect);
+  };
+  canvas.onpointermove = e => {
+    if (!start) return; const p = pt(e);
+    rect.setAttribute("x", Math.min(start.x, p.x) * 100); rect.setAttribute("y", Math.min(start.y, p.y) * 100);
+    rect.setAttribute("width", Math.abs(p.x - start.x) * 100); rect.setAttribute("height", Math.abs(p.y - start.y) * 100);
+  };
+  canvas.onpointerup = e => {
+    if (!start) return; const p = pt(e);
+    const box = { appearance_id: modalState.drawingApp, x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) };
+    start = null;
+    if (box.w < .01 || box.h < .01) return;
+    modalState.drawingApp = null;
+    mutate("/api/boxes", "POST", box);
+  };
+}
+modal.addEventListener("keydown", e => { if (e.key === "Escape" && modalState?.drawingApp) { e.preventDefault(); modalState.drawingApp = null; renderModal(); } });
+
+// ---------- routing ----------
+function route() {
+  const [, kind, id] = location.hash.split("/");
+  if (kind === "e" && id) showEntity(decodeURIComponent(id));
+  else if (kind === "c" && id) openCard(decodeURIComponent(id));
+}
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>
