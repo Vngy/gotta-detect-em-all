@@ -9,11 +9,10 @@ appearance with a verified box. Rejected suggestions are kept so they are never 
 """
 import argparse
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 from gde import evaluate
 from gde.db import connect
-from gde.detect import card_image, iou
+from gde.detect import card_image, iou, prefetched
 
 MIN_P = 0.3
 MODEL = "owlv2+clip+probe-v2"
@@ -39,10 +38,8 @@ def main():
              " c.id")
     cards = conn.execute(sql + order, params).fetchall()[: args.limit]
     print(f"{len(cards)} cards to scan", flush=True)
-    pool = ThreadPoolExecutor(8)
-    images = pool.map(lambda c: card_image(c["id"], c["image"]), cards)
     t0, found = time.time(), 0
-    for i, (card, img) in enumerate(zip(cards, images), 1):
+    for i, (card, img) in enumerate(prefetched(lambda c: card_image(c["id"], c["image"]), cards), 1):
         if img is None:
             continue  # not marked scanned: retried once the image exists
         W, H = img.size

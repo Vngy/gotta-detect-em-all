@@ -57,6 +57,27 @@ def card_image(card_id, image_base):
     return fetch_image(f"{image_base}/high.webp", IMAGES / f"{card_id}.webp") if image_base else None
 
 
+def prefetched(fn, items, ahead=16, workers=8):
+    """Yield (item, fn(item)) in order, running fn at most `ahead` items early.
+
+    Bounded on purpose: submitting everything up front kept every decoded card image alive in its future
+    (~1.5 MB each) and grew a full --all run to 37 GB.
+    """
+    from collections import deque
+    with ThreadPoolExecutor(workers) as pool:
+        it, window = iter(items), deque()
+        for item in it:
+            window.append((item, pool.submit(fn, item)))
+            if len(window) >= ahead:
+                break
+        while window:
+            item, fut = window.popleft()
+            nxt = next(it, None)
+            if nxt is not None:
+                window.append((nxt, pool.submit(fn, nxt)))
+            yield item, fut.result()
+
+
 def iou(a, b):
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
@@ -220,11 +241,10 @@ def main():
     conn = connect()
     jobs = list(targets(conn, args.entity, args.card, args.redo, args.cameos))[: args.limit]
     print(f"{len(jobs)} cards to process on {DEVICE}", flush=True)
-    # Download images ahead of the GPU so the network never stalls inference.
-    pool = ThreadPoolExecutor(8)
-    prefetch = [pool.submit(card_image, c["id"], c["image"]) for c, _ in jobs]
+    # Download images a little ahead of the GPU so the network never stalls inference.
     t0 = time.time()
-    for i, ((card, apps), _) in enumerate(zip(jobs, prefetch), 1):
+    loaded = prefetched(lambda job: card_image(job[0]["id"], job[0]["image"]), jobs)
+    for i, ((card, apps), _img) in enumerate(loaded, 1):
         try:
             boxes = locate(card, apps)
         except Exception as e:  # one bad image shouldn't kill an hours-long batch
