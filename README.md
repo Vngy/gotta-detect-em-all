@@ -40,12 +40,17 @@ one-to-one assignment picks a box per entity. Check quality with
 `evaluate` asks the harder question — which species are on a card, *without* being told — over all
 ~1,025 species. A linear probe trained on the pseudo-labeled boxes (`train_probe`) carries most of the gain:
 
-| | en-cameo (145 cards) | | ja-151 (191 Japanese cards) | |
-|---|---|---|---|---|
-| | baseline | probe v1 | baseline | probe v1 |
-| cameo@5 | 46.5% | 66.8% | — | — |
-| main@1 | 78.6% | 77.4% | 75.5% | 91.0% |
-| recall@5 | 58.1% | 75.7% | 94.8% | 98.4% |
+| | en-cameo (145 cards) | | | ja-151 (191 Japanese cards) | | |
+|---|---|---|---|---|---|---|
+| | baseline | probe v1 | probe v2 | baseline | probe v1 | probe v2 |
+| recall@1 | 42.2% | 54.8% | 62.5% | 74.0% | 89.1% | 96.4% |
+| recall@5 | 58.1% | 75.7% | 74.1% | 94.8% | 98.4% | 98.4% |
+| main@1 | 78.6% | 77.4% | 96.4% | 75.5% | 91.0% | 98.4% |
+| cameo@5 | 46.5% | 66.8% | 65.0% | — | — | — |
+
+v1 trained on 1,740 boxes from cameo cards; v2 on 18,945 boxes from every card (mostly main subjects), which is
+why main-subject accuracy jumped and cameo accuracy didn't. Small cameos need more cameo-specific labels —
+accepted discovery suggestions are the intended source.
 
 English 151 is excluded from training so ja-151 never sees its art. `discover` turns confident (p ≥ 0.3)
 identifications that aren't in any list into suggestions you accept or reject in the card view.

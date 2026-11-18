@@ -11,13 +11,12 @@ exists. Held out: the en-cameo eval cards and all of English 151 (sv03.5), whose
   uv run python -m gde.train_probe
 """
 import random
-from concurrent.futures import ThreadPoolExecutor
 
 import torch
 from PIL import Image, ImageOps
 
 from gde.db import DATA, connect
-from gde.detect import DEVICE, IMAGES, clip_image_emb, padded_crop, reference_emb
+from gde.detect import DEVICE, IMAGES, clip_image_emb, padded_crop, prefetched, reference_emb
 from gde.evaluate import en_cameo
 
 PROBE = DATA / "probe.pt"
@@ -67,14 +66,13 @@ def extract(conn):
             groups.extend(g for _, _, g in batch)
             batch.clear()
 
-    with ThreadPoolExecutor(8) as pool:
-        for i, crops in enumerate(pool.map(lambda kv: crops_for(*kv), by_card.items()), 1):
-            for item in crops:
-                batch.append(item)
-                if len(batch) == 64:
-                    flush()
-            if i % 1000 == 0:
-                print(f"  {i}/{len(by_card)} cards embedded", flush=True)
+    for i, (_, crops) in enumerate(prefetched(lambda kv: crops_for(*kv), by_card.items()), 1):
+        for item in crops:
+            batch.append(item)
+            if len(batch) == 64:
+                flush()
+        if i % 1000 == 0:
+            print(f"  {i}/{len(by_card)} cards embedded", flush=True)
     flush()
     X, y = torch.cat(feats), torch.tensor(labels)
     torch.save({"X": X, "y": y, "groups": groups}, FEATURES)
